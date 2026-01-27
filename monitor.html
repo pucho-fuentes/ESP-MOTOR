@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Monitor IMU ESP32</title>
+    <style>
+        body {
+            background: #0f172a;
+            color: #e5e7eb;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        .box {
+            background: #020617;
+            padding: 20px;
+            margin: 20px auto;
+            width: 300px;
+            border-radius: 12px;
+            box-shadow: 0 0 20px #38bdf8;
+        }
+        h1 { color: #38bdf8; }
+    </style>
+</head>
+<body>
+
+<h1>📡 Monitor IMU ESP32</h1>
+
+<div class="box">
+    <p>AX: <span id="ax">0</span></p>
+    <p>AY: <span id="ay">0</span></p>
+    <p>AZ: <span id="az">0</span></p>
+    <p><small id="time"></small></p>
+</div>
+
+<script>
+async function updateData() {
+    try {
+        const res = await fetch("/api/latest");
+        const data = await res.json();
+
+        document.getElementById("ax").innerText = data.ax.toFixed(2);
+        document.getElementById("ay").innerText = data.ay.toFixed(2);
+        document.getElementById("az").innerText = data.az.toFixed(2);
+        document.getElementById("time").innerText = data.timestamp;
+    } catch (e) {
+        console.error("Error:", e);
+    }
+}
+
+setInterval(updateData, 200);
+</script>
+
+</body>
+</html>
