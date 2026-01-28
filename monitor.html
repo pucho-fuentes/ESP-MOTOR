@@ -1,30 +1,81 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
+    <meta charset="UTF-8">
     <title>IMU Monitor</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: #e5e7eb;
+            text-align: center;
+        }
+
+        canvas {
+            max-width: 900px;
+            margin: 20px auto;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background: #22c55e;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            color: black;
+            margin-top: 15px;
+        }
+
+        button:hover {
+            background: #16a34a;
+        }
+
+        #alert {
+            font-size: 18px;
+            margin-top: 10px;
+        }
+    </style>
 </head>
 <body>
+
 <h2>📊 Monitor IMU en tiempo real</h2>
+
 <canvas id="chart"></canvas>
-<p id="alert"></p>
+
+<p id="alert">Estado: --</p>
+
+<!-- ✅ BOTÓN DESCARGA -->
+<a href="/api/csv">
+    <button>⬇️ Descargar registros (CSV)</button>
+</a>
 
 <script>
 const ctx = document.getElementById('chart').getContext('2d');
+
 const chart = new Chart(ctx, {
     type: 'line',
     data: {
         labels: [],
         datasets: [
-            {label: 'AX', data: [], borderColor: 'red'},
-            {label: 'AY', data: [], borderColor: 'green'},
-            {label: 'AZ', data: [], borderColor: 'blue'}
+            { label: 'AX', data: [], borderColor: 'red', tension: 0.3 },
+            { label: 'AY', data: [], borderColor: 'green', tension: 0.3 },
+            { label: 'AZ', data: [], borderColor: 'blue', tension: 0.3 }
         ]
+    },
+    options: {
+        animation: false,
+        scales: {
+            x: { display: false }
+        }
     }
 });
 
 async function update() {
     const res = await fetch('/api/latest');
+    if (!res.ok) return;
+
     const data = await res.json();
 
     chart.data.labels.push('');
@@ -41,11 +92,13 @@ async function update() {
 
     const alertRes = await fetch('/api/alert');
     const alertData = await alertRes.json();
+
     document.getElementById("alert").innerHTML =
-        alertData.alert ? "🚨 VIBRACIÓN FUERTE" : "✅ Normal";
+        alertData.alert ? "🚨 VIBRACIÓN FUERTE" : "✅ Estado normal";
 }
 
 setInterval(update, 200);
 </script>
+
 </body>
 </html>
