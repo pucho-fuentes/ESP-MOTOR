@@ -5,9 +5,9 @@ import mysql.connector
 
 app = Flask(__name__)
 
-# -------------------------
-# CONFIG DB (Railway)
-# -------------------------
+# -------------------------------------------------
+# CONFIGURACIÓN MySQL (Railway usa variables de entorno)
+# -------------------------------------------------
 db_config = {
     "host": os.environ.get("MYSQLHOST"),
     "user": os.environ.get("MYSQLUSER"),
@@ -19,9 +19,30 @@ db_config = {
 def get_db_connection():
     return mysql.connector.connect(**db_config)
 
-# -------------------------
-# GUARDA EL ÚLTIMO DATO
-# -------------------------
+# -------------------------------------------------
+# INICIALIZAR BASE DE DATOS (CREA TABLA SI NO EXISTE)
+# -------------------------------------------------
+def init_db():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS imu_data (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            ax FLOAT,
+            ay FLOAT,
+            az FLOAT,
+            timestamp DATETIME
+        )
+    """)
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+init_db()
+
+# -------------------------------------------------
+# ÚLTIMO DATO EN MEMORIA (TIEMPO REAL)
+# -------------------------------------------------
 latest_data = {
     "ax": 0,
     "ay": 0,
@@ -29,14 +50,16 @@ latest_data = {
     "time": ""
 }
 
-# -------------------------
+# -------------------------------------------------
+# RUTA PRINCIPAL
+# -------------------------------------------------
 @app.route("/")
 def home():
     return "Servidor IMU activo 🚀"
 
-# -------------------------
+# -------------------------------------------------
 # ESP32 ENVÍA DATOS
-# -------------------------
+# -------------------------------------------------
 @app.route("/data", methods=["POST"])
 def receive_data():
     global latest_data
@@ -57,7 +80,6 @@ def receive_data():
         "time": now.isoformat()
     }
 
-    # ---- GUARDAR EN DB ----
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -69,34 +91,39 @@ def receive_data():
         cursor.close()
         conn.close()
     except Exception as e:
-        print("❌ Error DB:", e)
+        print("❌ Error MySQL:", e)
 
     print("📥 Datos recibidos:", latest_data)
     return jsonify({"status": "ok"})
 
-# -------------------------
-# ÚLTIMO DATO (API)
-# -------------------------
+# -------------------------------------------------
+# API ÚLTIMO DATO
+# -------------------------------------------------
 @app.route("/api/latest")
 def api_latest():
-    return jsonify(latest_data)
+    return jsonify({
+        "ax": latest_data["ax"],
+        "ay": latest_data["ay"],
+        "az": latest_data["az"],
+        "timestamp": latest_data["time"]
+    })
 
-# -------------------------
-# VER DATOS (JSON)
-# -------------------------
+# -------------------------------------------------
+# API HISTORIAL (JSON)
+# -------------------------------------------------
 @app.route("/api/all")
 def api_all():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM imu_data ORDER BY timestamp DESC LIMIT 1000")
-    data = cursor.fetchall()
+    rows = cursor.fetchall()
     cursor.close()
     conn.close()
-    return jsonify(data)
+    return jsonify(rows)
 
-# -------------------------
+# -------------------------------------------------
 # DESCARGAR CSV
-# -------------------------
+# -------------------------------------------------
 @app.route("/download")
 def download_csv():
     conn = get_db_connection()
@@ -114,7 +141,9 @@ def download_csv():
     conn.close()
     return send_file(filename, as_attachment=True)
 
-# -------------------------
+# -------------------------------------------------
+# INICIO SERVIDOR
+# -------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
