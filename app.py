@@ -1,39 +1,23 @@
-# ⚠️ ESTO SIEMPRE VA PRIMERO
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, jsonify, send_file, Response
+from flask import Flask, jsonify, Response, send_file
 from flask_socketio import SocketIO
 from datetime import datetime
 import sqlite3
 import os
 import math
 
-# -------------------------
-# APP CONFIG
-# -------------------------
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "imu-secret"
-
-socketio = SocketIO(
-    app,
-    cors_allowed_origins="*",
-    async_mode="eventlet"
-)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 DB_NAME = "imu_data.db"
 VIBRATION_THRESHOLD = 15
 
-last_data = {
-    "ax": 0,
-    "ay": 0,
-    "az": 0,
-    "magnitude": 0,
-    "timestamp": ""
-}
+last_alert = False
 
 # -------------------------
-# INIT DB
+# DB
 # -------------------------
 def init_db():
     conn = sqlite3.connect(DB_NAME)
@@ -60,86 +44,52 @@ init_db()
 def home():
     return "🚀 Servidor IMU Socket.IO activo"
 
+@app.route("/monitor")
+def monitor():
+    return send_file("monitor.html")
+
 # -------------------------
-# SOCKET.IO RECEIVE DATA
+# SOCKET.IO RECEIVE ESP32
 # -------------------------
 @socketio.on("imu")
 def handle_imu(data):
-    global last_data
+    global last_alert
 
-    try:
-        ax = float(data.get("ax", 0))
-        ay = float(data.get("ay", 0))
-        az = float(data.get("az", 0))
+    ax = float(data.get("ax", 0))
+    ay = float(data.get("ay", 0))
+    az = float(data.get("az", 0))
 
-        magnitude = math.sqrt(ax**2 + ay**2 + az**2)
-        timestamp = datetime.now().isoformat()
+    magnitude = math.sqrt(ax**2 + ay**2 + az**2)
+    timestamp = datetime.now().isoformat()
 
-        # guardar último
-        last_data = {
-            "ax": ax,
-            "ay": ay,
-            "az": az,
-            "magnitude": magnitude,
-            "timestamp": timestamp
-        }
+    last_alert = magnitude > VIBRATION_THRESHOLD
 
-        # guardar en DB
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute(
-            "INSERT INTO imu_data (ax, ay, az, magnitude, timestamp) VALUES (?, ?, ?, ?, ?)",
-            (ax, ay, az, magnitude, timestamp)
-        )
-        conn.commit()
-        conn.close()
-
-        alert = magnitude > VIBRATION_THRESHOLD
-
-        print(f"📡 IMU → ax:{ax:.2f} ay:{ay:.2f} az:{az:.2f} | MAG:{magnitude:.2f}")
-
-        # reenviar a clientes web
-        socketio.emit("imu_update", last_data)
-
-        return {"status": "ok", "alert": alert}
-
-    except Exception as e:
-        print("❌ Error IMU:", e)
-        return {"status": "error"}
-
-# -------------------------
-# API LATEST
-# -------------------------
-@app.route("/api/latest")
-def latest():
-    return jsonify(last_data)
-
-# -------------------------
-# API HISTORY
-# -------------------------
-@app.route("/api/history")
-def history():
+    # guardar DB
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute(
-        "SELECT ax, ay, az, magnitude, timestamp FROM imu_data ORDER BY id DESC LIMIT 500"
+        "INSERT INTO imu_data (ax, ay, az, magnitude, timestamp) VALUES (?, ?, ?, ?, ?)",
+        (ax, ay, az, magnitude, timestamp)
     )
-    rows = c.fetchall()
+    conn.commit()
     conn.close()
 
-    return jsonify([
-        {
-            "ax": r[0],
-            "ay": r[1],
-            "az": r[2],
-            "magnitude": r[3],
-            "timestamp": r[4]
-        }
-        for r in rows
-    ])
+    payload = {
+        "ax": ax,
+        "ay": ay,
+        "az": az,
+        "magnitude": magnitude,
+        "alert": last_alert,
+        "timestamp": timestamp
+    }
+
+    print("📡 IMU →", payload)
+
+    # 🔥 ENVIAR A TODOS LOS HTML CONECTADOS
+    socketio.emit("imu_update", payload)
 
 # -------------------------
-# CSV EXPORT
+# CSV
 # -------------------------
 @app.route("/api/csv")
 def export_csv():
