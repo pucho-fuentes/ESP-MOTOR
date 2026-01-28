@@ -1,614 +1,227 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monitor de Vibraciones IMU - Motor Eléctrico</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+<meta charset="UTF-8">
+<title>Monitor IMU – ESP32</title>
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-            color: #e5e7eb;
-            min-height: 100vh;
-            padding: 20px;
-        }
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #0f172a;
+        color: #e5e7eb;
+        margin: 0;
+        padding: 20px;
+    }
 
-        header {
-            text-align: center;
-            padding: 30px 20px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 20px;
-            backdrop-filter: blur(10px);
-            margin-bottom: 30px;
-            animation: fadeInDown 0.6s ease-out;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        }
+    h1 {
+        text-align: center;
+        margin-bottom: 10px;
+    }
 
-        h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-            background: linear-gradient(135deg, #3b82f6 0%, #22c55e 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
+    .container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
 
-        .subtitle {
-            font-size: 1.1em;
-            color: #94a3b8;
-            margin-top: 10px;
-        }
+    .card {
+        background: #020617;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 0 15px rgba(0,0,0,.4);
+    }
 
-        .main-grid {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 25px;
-            margin-bottom: 25px;
-        }
+    .values {
+        display: flex;
+        justify-content: space-around;
+        font-size: 1.3em;
+        margin-top: 10px;
+    }
 
-        .card {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 20px;
-            padding: 25px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            animation: fadeIn 0.8s ease-out;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        }
+    .status {
+        text-align: center;
+        margin-top: 20px;
+        padding: 15px;
+        border-radius: 10px;
+        background: #022c22;
+        transition: .3s;
+    }
 
-        .motor-section {
-            text-align: center;
-        }
+    .status.alert {
+        background: #450a0a;
+        animation: blink 1s infinite;
+    }
 
-        .motor-image-container {
-            position: relative;
-            margin: 20px 0;
-        }
+    @keyframes blink {
+        0% { opacity: 1; }
+        50% { opacity: .6; }
+        100% { opacity: 1; }
+    }
 
-        .motor-image {
-            width: 100%;
-            max-width: 350px;
-            border-radius: 15px;
-            animation: float 3s ease-in-out infinite;
-        }
+    .indicator {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: lime;
+        margin: auto;
+    }
 
-        .vibration-indicator {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 120px;
-            height: 120px;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(34, 197, 94, 0.3) 0%, transparent 70%);
-            animation: pulse 2s ease-in-out infinite;
-            pointer-events: none;
-        }
+    .indicator.alert {
+        background: red;
+    }
 
-        .vibration-indicator.alert {
-            background: radial-gradient(circle, rgba(239, 68, 68, 0.5) 0%, transparent 70%);
-            animation: pulseAlert 0.5s ease-in-out infinite;
-        }
+    .footer {
+        margin-top: 20px;
+        text-align: center;
+    }
 
-        .status-panel {
-            margin-top: 25px;
-            padding: 20px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 15px;
-            border: 2px solid #22c55e;
-            transition: all 0.3s ease;
-        }
+    button {
+        background: #2563eb;
+        border: none;
+        color: white;
+        padding: 12px 20px;
+        font-size: 16px;
+        border-radius: 8px;
+        cursor: pointer;
+    }
 
-        .status-panel.alert {
-            border-color: #ef4444;
-            background: rgba(239, 68, 68, 0.1);
-            animation: borderPulse 0.5s ease-in-out infinite;
-        }
+    button:hover {
+        background: #1d4ed8;
+    }
 
-        .status-text {
-            font-size: 1.4em;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-
-        .status-icon {
-            font-size: 3em;
-            margin-bottom: 10px;
-            animation: bounce 2s ease-in-out infinite;
-        }
-
-        .metrics {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin-top: 20px;
-        }
-
-        .metric-card {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 15px;
-            border-radius: 12px;
-            border-left: 4px solid;
-            transition: transform 0.2s ease;
-        }
-
-        .metric-card:hover {
-            transform: translateY(-5px);
-        }
-
-        .metric-card.ax { border-color: #ef4444; }
-        .metric-card.ay { border-color: #22c55e; }
-        .metric-card.az { border-color: #3b82f6; }
-
-        .metric-label {
-            font-size: 0.9em;
-            color: #94a3b8;
-            margin-bottom: 5px;
-        }
-
-        .metric-value {
-            font-size: 1.8em;
-            font-weight: bold;
-        }
-
-        .chart-section {
-            min-height: 400px;
-        }
-
-        .chart-container {
-            position: relative;
-            height: 400px;
-            margin-top: 20px;
-        }
-
-        .controls {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            flex-wrap: wrap;
-            margin-top: 25px;
-        }
-
-        button {
-            padding: 15px 35px;
-            font-size: 16px;
-            font-weight: 600;
-            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            color: white;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4);
-        }
-
-        button:active {
-            transform: translateY(0);
-        }
-
-        button.secondary {
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
-        }
-
-        button.secondary:hover {
-            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 25px;
-        }
-
-        .stat-box {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 20px;
-            border-radius: 12px;
-            text-align: center;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .stat-label {
-            font-size: 0.9em;
-            color: #94a3b8;
-            margin-bottom: 8px;
-        }
-
-        .stat-value {
-            font-size: 2em;
-            font-weight: bold;
-            background: linear-gradient(135deg, #3b82f6 0%, #22c55e 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes fadeInDown {
-            from {
-                opacity: 0;
-                transform: translateY(-30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes float {
-            0%, 100% {
-                transform: translateY(0px);
-            }
-            50% {
-                transform: translateY(-10px);
-            }
-        }
-
-        @keyframes pulse {
-            0%, 100% {
-                opacity: 0.3;
-                transform: translate(-50%, -50%) scale(1);
-            }
-            50% {
-                opacity: 0.6;
-                transform: translate(-50%, -50%) scale(1.1);
-            }
-        }
-
-        @keyframes pulseAlert {
-            0%, 100% {
-                opacity: 0.5;
-                transform: translate(-50%, -50%) scale(1);
-            }
-            50% {
-                opacity: 0.8;
-                transform: translate(-50%, -50%) scale(1.2);
-            }
-        }
-
-        @keyframes borderPulse {
-            0%, 100% {
-                border-color: #ef4444;
-                box-shadow: 0 0 0 rgba(239, 68, 68, 0);
-            }
-            50% {
-                border-color: #fca5a5;
-                box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
-            }
-        }
-
-        @keyframes bounce {
-            0%, 100% {
-                transform: translateY(0);
-            }
-            50% {
-                transform: translateY(-10px);
-            }
-        }
-
-        @media (max-width: 1024px) {
-            .main-grid {
-                grid-template-columns: 1fr;
-            }
-
-            h1 {
-                font-size: 2em;
-            }
-        }
-
-        @media (max-width: 640px) {
-            .metrics {
-                grid-template-columns: 1fr;
-            }
-
-            .controls {
-                flex-direction: column;
-            }
-
-            button {
-                width: 100%;
-            }
-        }
-    </style>
+</style>
 </head>
+
 <body>
-    <div class="container">
-        <header>
-            <h1>⚡ Monitor de Vibraciones IMU</h1>
-            <p class="subtitle">Sistema de Monitoreo en Tiempo Real para Motores Eléctricos</p>
-        </header>
 
-        <div class="main-grid">
-            <!-- Panel del Motor -->
-            <div class="card motor-section">
-                <h2 style="margin-bottom: 20px;">🔧 Estado del Motor</h2>
-                
-                <div class="motor-image-container">
-                    <img src="https://img.freepik.com/vector-premium/ilustracion-dibujos-animados-equipos-produccion-motores-electricos_1322560-6793.jpg" 
-                         alt="Motor Eléctrico" 
-                         class="motor-image">
-                    <div class="vibration-indicator" id="vibrationIndicator"></div>
-                </div>
+<h1>📡 Monitor de Vibraciones IMU</h1>
 
-                <div class="status-panel" id="statusPanel">
-                    <div class="status-icon" id="statusIcon">✅</div>
-                    <div class="status-text" id="statusText">Estado Normal</div>
-                    <div style="color: #94a3b8; margin-top: 10px;" id="statusDescription">
-                        El motor opera dentro de parámetros normales
-                    </div>
-                </div>
+<div class="container">
 
-                <div class="metrics">
-                    <div class="metric-card ax">
-                        <div class="metric-label">Aceleración X</div>
-                        <div class="metric-value" id="valueAX">0.00</div>
-                    </div>
-                    <div class="metric-card ay">
-                        <div class="metric-label">Aceleración Y</div>
-                        <div class="metric-value" id="valueAY">0.00</div>
-                    </div>
-                    <div class="metric-card az">
-                        <div class="metric-label">Aceleración Z</div>
-                        <div class="metric-value" id="valueAZ">0.00</div>
-                    </div>
-                </div>
-            </div>
+    <div class="card">
+        <h2>📈 Aceleraciones (m/s²)</h2>
+        <canvas id="imuChart"></canvas>
 
-            <!-- Panel de Gráficas -->
-            <div class="card chart-section">
-                <h2 style="margin-bottom: 20px;">📊 Gráfica de Vibraciones en Tiempo Real</h2>
-                <div class="chart-container">
-                    <canvas id="chart"></canvas>
-                </div>
-
-                <div class="stats-grid">
-                    <div class="stat-box">
-                        <div class="stat-label">Muestras Registradas</div>
-                        <div class="stat-value" id="sampleCount">0</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-label">Alertas Detectadas</div>
-                        <div class="stat-value" id="alertCount">0</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-label">Tiempo Activo</div>
-                        <div class="stat-value" id="uptime">00:00</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Controles -->
-        <div class="card">
-            <div class="controls">
-                <a href="/api/csv" style="text-decoration: none;">
-                    <button>
-                        <span>⬇️</span>
-                        <span>Descargar Datos CSV</span>
-                    </button>
-                </a>
-                <button class="secondary" onclick="resetStats()">
-                    <span>🔄</span>
-                    <span>Reiniciar Estadísticas</span>
-                </button>
-            </div>
+        <div class="values">
+            <div>AX: <span id="valueAX">0</span></div>
+            <div>AY: <span id="valueAY">0</span></div>
+            <div>AZ: <span id="valueAZ">0</span></div>
         </div>
     </div>
 
-    <script>
-        // Configuración del gráfico
-        const ctx = document.getElementById('chart').getContext('2d');
-        const chart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [
-                    {
-                        label: 'Aceleración X',
-                        data: [],
-                        borderColor: '#ef4444',
-                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                        tension: 0.4,
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        fill: true
-                    },
-                    {
-                        label: 'Aceleración Y',
-                        data: [],
-                        borderColor: '#22c55e',
-                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                        tension: 0.4,
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        fill: true
-                    },
-                    {
-                        label: 'Aceleración Z',
-                        data: [],
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        tension: 0.4,
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        fill: true
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: {
-                    duration: 200
-                },
-                scales: {
-                    x: {
-                        display: true,
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
-                        },
-                        ticks: {
-                            color: '#94a3b8',
-                            maxTicksLimit: 10
-                        }
-                    },
-                    y: {
-                        display: true,
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
-                        },
-                        ticks: {
-                            color: '#94a3b8'
-                        }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        display: true,
-                        position: 'top',
-                        labels: {
-                            color: '#e5e7eb',
-                            padding: 15,
-                            font: {
-                                size: 12,
-                                weight: 'bold'
-                            }
-                        }
-                    }
+    <div class="card">
+        <h2>⚙️ Estado del Motor</h2>
+
+        <div class="status" id="statusPanel">
+            <div id="statusIcon" style="font-size:40px;">✅</div>
+            <h3 id="statusText">Estado Normal</h3>
+            <p id="statusDescription">Motor operando correctamente</p>
+            <div class="indicator" id="vibrationIndicator"></div>
+        </div>
+
+        <p style="text-align:center;margin-top:15px;">
+            📦 Muestras: <span id="sampleCount">0</span><br>
+            🚨 Alertas: <span id="alertCount">0</span>
+        </p>
+    </div>
+
+</div>
+
+<div class="footer">
+    <button onclick="downloadCSV()">⬇️ Descargar registros CSV</button>
+</div>
+
+<script>
+let sampleCount = 0;
+let alertCount = 0;
+
+// CHART
+const ctx = document.getElementById('imuChart').getContext('2d');
+const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [
+            { label: 'AX', data: [], borderWidth: 2 },
+            { label: 'AY', data: [], borderWidth: 2 },
+            { label: 'AZ', data: [], borderWidth: 2 }
+        ]
+    },
+    options: {
+        responsive: true,
+        animation: false,
+        scales: {
+            y: {
+                title: {
+                    display: true,
+                    text: 'm/s²'
                 }
             }
-        });
-
-        // Variables de estado
-        let sampleCount = 0;
-        let alertCount = 0;
-        let startTime = Date.now();
-
-        // Función de actualización
-        async function update() {
-            try {
-                const res = await fetch('/api/latest');
-                if (!res.ok) return;
-                
-                const data = await res.json();
-                
-                // Actualizar contador de muestras
-                sampleCount++;
-                document.getElementById('sampleCount').textContent = sampleCount;
-                
-                // Actualizar valores actuales
-                document.getElementById('valueAX').textContent = data.ax.toFixed(2);
-                document.getElementById('valueAY').textContent = data.ay.toFixed(2);
-                document.getElementById('valueAZ').textContent = data.az.toFixed(2);
-                
-                // Actualizar gráfico
-                const timestamp = new Date().toLocaleTimeString();
-                chart.data.labels.push(timestamp);
-                chart.data.datasets[0].data.push(data.ax);
-                chart.data.datasets[1].data.push(data.ay);
-                chart.data.datasets[2].data.push(data.az);
-                
-                // Mantener solo los últimos 50 puntos
-                if (chart.data.labels.length > 50) {
-                    chart.data.labels.shift();
-                    chart.data.datasets.forEach(d => d.data.shift());
-                }
-                
-                chart.update('none');
-                
-                // Verificar alertas
-                const alertRes = await fetch('/api/alert');
-                const alertData = await alertRes.json();
-                
-                const statusPanel = document.getElementById('statusPanel');
-                const statusIcon = document.getElementById('statusIcon');
-                const statusText = document.getElementById('statusText');
-                const statusDescription = document.getElementById('statusDescription');
-                const vibrationIndicator = document.getElementById('vibrationIndicator');
-                
-                if (alertData.alert) {
-                    alertCount++;
-                    document.getElementById('alertCount').textContent = alertCount;
-                    
-                    statusPanel.classList.add('alert');
-                    vibrationIndicator.classList.add('alert');
-                    statusIcon.textContent = '🚨';
-                    statusText.textContent = 'VIBRACIÓN EXCESIVA';
-                    statusDescription.textContent = 'Se detectaron vibraciones fuera del rango normal. Revisar motor.';
-                } else {
-                    statusPanel.classList.remove('alert');
-                    vibrationIndicator.classList.remove('alert');
-                    statusIcon.textContent = '✅';
-                    statusText.textContent = 'Estado Normal';
-                    statusDescription.textContent = 'El motor opera dentro de parámetros normales';
-                }
-                
-            } catch (error) {
-                console.error('Error al actualizar datos:', error);
-            }
         }
+    }
+});
 
-        // Actualizar tiempo activo
-        function updateUptime() {
-            const elapsed = Date.now() - startTime;
-            const minutes = Math.floor(elapsed / 60000);
-            const seconds = Math.floor((elapsed % 60000) / 1000);
-            document.getElementById('uptime').textContent = 
-                `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        }
+// SOCKET.IO
+const socket = io();
 
-        // Función para reiniciar estadísticas
-        function resetStats() {
-            sampleCount = 0;
-            alertCount = 0;
-            startTime = Date.now();
-            document.getElementById('sampleCount').textContent = '0';
-            document.getElementById('alertCount').textContent = '0';
-            document.getElementById('uptime').textContent = '00:00';
-            
-            chart.data.labels = [];
-            chart.data.datasets.forEach(d => d.data = []);
-            chart.update();
-        }
+socket.on("connect", () => {
+    console.log("🟢 Conectado al servidor");
+});
 
-        // Iniciar actualizaciones
-        setInterval(update, 200);
-        setInterval(updateUptime, 1000);
-        
-        // Primera actualización
-        update();
-    </script>
+socket.on("imu_update", data => {
+
+    sampleCount++;
+    document.getElementById("sampleCount").textContent = sampleCount;
+
+    document.getElementById("valueAX").textContent = data.ax.toFixed(2);
+    document.getElementById("valueAY").textContent = data.ay.toFixed(2);
+    document.getElementById("valueAZ").textContent = data.az.toFixed(2);
+
+    const time = new Date().toLocaleTimeString();
+
+    chart.data.labels.push(time);
+    chart.data.datasets[0].data.push(data.ax);
+    chart.data.datasets[1].data.push(data.ay);
+    chart.data.datasets[2].data.push(data.az);
+
+    if (chart.data.labels.length > 60) {
+        chart.data.labels.shift();
+        chart.data.datasets.forEach(d => d.data.shift());
+    }
+
+    chart.update("none");
+
+    const statusPanel = document.getElementById("statusPanel");
+    const indicator = document.getElementById("vibrationIndicator");
+
+    if (data.alert) {
+        alertCount++;
+        document.getElementById("alertCount").textContent = alertCount;
+
+        statusPanel.classList.add("alert");
+        indicator.classList.add("alert");
+
+        document.getElementById("statusIcon").textContent = "🚨";
+        document.getElementById("statusText").textContent = "VIBRACIÓN EXCESIVA";
+        document.getElementById("statusDescription").textContent = "Revisar motor inmediatamente";
+    } else {
+        statusPanel.classList.remove("alert");
+        indicator.classList.remove("alert");
+
+        document.getElementById("statusIcon").textContent = "✅";
+        document.getElementById("statusText").textContent = "Estado Normal";
+        document.getElementById("statusDescription").textContent = "Motor operando correctamente";
+    }
+});
+
+// DESCARGA CSV
+function downloadCSV() {
+    window.location.href = "/api/csv";
+}
+</script>
+
 </body>
 </html>
